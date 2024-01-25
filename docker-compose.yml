@@ -1,0 +1,45 @@
+version: '3.7'
+
+services:
+
+  consul_server:
+    image: hashicorp/consul:1.15
+    ports:
+      # consul dashboard
+      - 8500:8500
+    volumes:
+      - .docker/consul_server/config:/consul/config
+    command: "agent"
+
+  fabio:
+    image: fabiolb/fabio
+    ports:
+      # fabio dashboard
+      - 9998:9998
+      # the app
+      - 9999:9999
+    depends_on:
+      - consul_server
+    command: -registry.consul.addr="consul_server:8500"
+
+  nomad_in_docker:
+    # официальный образ hashicorp/nomad запрещает запускать агента nomad, он умеет только доставлять job для ci
+    image: circleci/nomad:1.4.568-bfc9a6ec4-125-a748c37
+    command: nomad agent -dev -data-dir="${PWD}/.docker/nomad/data" -config="/etc/nomad"
+    privileged: true
+    ports:
+      # nomad dashboard
+      - 4646:4646
+      - 4647:4647
+      - 4648:4648
+    depends_on:
+      - consul_server
+    volumes:
+      # сокет локального докера
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      # папка с конфигами номада
+      - .docker/nomad/config:/etc/nomad
+      # папка с конфигами job номада
+      - .docker/nomad/demo_jobs:/demo_jobs
+      # папка с данными nomad должна иметь одинаковый путь на локали и в контейнере, чтобы docker её увидел, когда запустит образ через task в job
+      - .docker/nomad/data:${PWD}/.docker/nomad/data
